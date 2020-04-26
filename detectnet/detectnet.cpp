@@ -21,9 +21,12 @@
 #include "image.h"
 #include "yolo_layer.h"
 
+#include <sstream>
+#include <fstream>
+
 using namespace caffe;
 using namespace cv;
-
+using namespace std;
 
 bool signal_recieved = false;
 
@@ -38,6 +41,59 @@ uint64_t current_timestamp() {
     struct timeval te; 
     gettimeofday(&te, NULL); // get current time
     return te.tv_sec*1000LL + te.tv_usec/1000; // caculate milliseconds
+}
+
+
+
+void save_float_data_file(const string & filename, const float * data, int count)
+{
+	ofstream outfile(filename.c_str());
+	if (!outfile)
+	{
+		LOG(ERROR) << "open file failed, " << filename;
+		return ;
+	}
+	
+	for (int c = 0; c < count; ++c)
+	{
+		outfile << scientific << setprecision(18) << data[c] << "\n";	
+	}
+	outfile.close();
+
+}
+void save_layer_feature_maps(const Net<float> & net)
+{
+	LOG(INFO) << "save_layer_feature_maps";
+	for (int i = 0; i < net.blobs().size(); ++i)
+	{
+		boost::shared_ptr<Blob<float> > b = net.blobs()[i];
+		const vector<int>& shapes = b->shape();
+		stringstream ss;
+		//"%s_output%d_%d_%d_%d_caffe.linear.float"%
+		ss << "layer" <<  (i + 1) << "_" << net.layer_names()[i] << "_output0_" << shapes[1] << "_" << shapes[2] << "_" 
+			<< shapes[3] << "_caffe.linear.float";
+		string filename = "/home/alex/project/feature_maps_caffe/" + ss.str();
+		LOG(INFO) << "save file " << ss.str();
+		save_float_data_file(filename, b->cpu_data(), b->count());
+	}
+	
+}
+
+void save_blobs(const vector<Blob<float>*> &blobs)
+{
+	LOG(INFO) << "save_blobs";
+	for (int i = 0; i < blobs.size(); ++i)
+	{
+		Blob<float> * b = blobs[i];
+		const vector<int>& shapes = b->shape();
+		stringstream ss;
+		ss << "blob_" << shapes[1] << "_" << shapes[2] << "_" 
+			<< shapes[3] << "_caffe.linear.float";
+		string filename = "/home/alex/project/feature_maps_caffe/" + ss.str();
+		LOG(INFO) << "save file " << ss.str();
+		save_float_data_file(filename, b->cpu_data(), b->count());
+	}
+
 }
 
 int main( int argc, char** argv )
@@ -67,7 +123,7 @@ int main( int argc, char** argv )
     detection *dets = NULL;
         
     /* load and init network. */
-    shared_ptr<Net<float> > net;
+    boost::shared_ptr<Net<float> > net;
     net.reset(new Net<float>(model_file, TEST));
     net->CopyTrainedLayersFrom(weights_file);
     LOG(INFO) << "net inputs numbers is " << net->num_inputs();
@@ -84,9 +140,23 @@ int main( int argc, char** argv )
 
 
     uint64_t beginDataTime =  current_timestamp();
+	
     //load image
+#if 0
+	// darknet源工程默认使用letterbox缩放图片，而darknet-AlexeyAB默认使用resize缩放图片
     im = load_image_color((char*)image_path.c_str(),0,0);
     sized = letterbox_image(im,net_input_data_blobs->width(),net_input_data_blobs->height());
+
+#else
+	// darknet源工程默认使用letterbox缩放图片，而darknet-AlexeyAB默认使用resize缩放图片
+	sized = load_image_resize((char *)image_path.c_str(), 
+		net_input_data_blobs->width(),
+		net_input_data_blobs->height(),
+		net_input_data_blobs->channels(),
+		&im);
+#endif
+
+	
     cuda_push_array(net_input_data_blobs->mutable_gpu_data(),sized.data,size);
 
     uint64_t endDataTime =  current_timestamp();
@@ -98,11 +168,28 @@ int main( int argc, char** argv )
     net->Forward();
     for(int i =0;i<net->num_outputs();++i){
         blobs.push_back(net->output_blobs()[i]);
+		LOG(INFO) << "output_blobs[" << i << "] channels is  " << net->output_blobs()[i]->channels();
+    	LOG(INFO) << "output_blobs[" << i << "]  width is  " << net->output_blobs()[i]->width();
+    	LOG(INFO) << "output_blobs[" << i << "]  height is  " << net->output_blobs()[i]->height();
     }
+	
+	
+	uint64_t endForwardTime = current_timestamp();
+	LOG(INFO) << "caffe yolov3 : processing net->Forward() avergae time is "
+              << endForwardTime - startDetectTime << " ms";
+
+#if SAVE_FEATURE_MAP
+	save_float_data_file("input.float", im.data, im.c * im.w * im.h);
+	save_float_data_file("input_sized.float", sized.data, sized.c * sized.w * sized.h);
+	save_layer_feature_maps(*net);
+	save_blobs(blobs);
+#endif
+	
     dets = get_detections(blobs,im.w,im.h,
         net_input_data_blobs->width(),net_input_data_blobs->height(),&nboxes);
 
     uint64_t endDetectTime = current_timestamp();
+	LOG(INFO) << "get_detections nboxes = " << nboxes;
     LOG(INFO) << "caffe yolov3 : processing network yolov3 tiny avergae time is "
               << endDetectTime - startDetectTime << " ms";
 
@@ -112,7 +199,7 @@ int main( int argc, char** argv )
     for(i=0;i< nboxes;++i){
         char labelstr[4096] = {0};
         int cls = -1;
-        for(j=0;j<80;++j){
+        for(j=0;j<classes;++j){
             if(dets[i].prob[j] > 0.5){
                 if(cls < 0){
                     cls = j;

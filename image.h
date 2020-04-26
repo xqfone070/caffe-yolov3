@@ -15,6 +15,7 @@ typedef struct
 }image;
 
 image load_image_color(char* filename,int w,int h);
+image load_image_resize(char *filename, int w, int h, int c, image *im);
 
 void free_image(image m);
 

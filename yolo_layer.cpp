@@ -12,8 +12,13 @@
 #include <stdio.h>
 #include <math.h>
 
+
+
+
+
 //yolov3
-float biases[18] = {10,13,16,30,33,23,30,61,62,45,59,119,116,90,156,198,373,326};
+//float biases[18] = {10,13,16,30,33,23,30,61,62,45,59,119,116,90,156,198,373,326};
+float biases[18] = {8, 17,  12, 24,  16, 32,  23, 41,  31, 56,  43, 76,  61,102,  80,142, 122,214};
 
 //yolov3-tiny
 float biases_tiny[12] = {10,14,23,27,37,58,81,82,135,169,344,319};
@@ -151,6 +156,8 @@ int num_detections(vector<layer> layers_params,float thresh)
 
 }
 
+
+
 detection* make_network_boxes(vector<layer> layers_params,float thresh,int* num)
 {
     layer l = layers_params[0];
@@ -169,6 +176,46 @@ detection* make_network_boxes(vector<layer> layers_params,float thresh,int* num)
 }
 
 
+#if 1
+// darknet源工程默认使用letterbox缩放图片，而darknet-AlexeyAB默认使用resize缩放图片
+void correct_yolo_boxes(detection *dets, int n, int w, int h, int netw, int neth, int relative)
+{
+	int letter = 0;
+    int i;
+	
+    int new_w=0;
+    int new_h=0;
+    if (letter) {
+        if (((float)netw / w) < ((float)neth / h)) {
+            new_w = netw;
+            new_h = (h * netw) / w;
+        }
+        else {
+            new_h = neth;
+            new_w = (w * neth) / h;
+        }
+    }
+    else {
+        new_w = netw;
+        new_h = neth;
+    }
+    for (i = 0; i < n; ++i){
+        box b = dets[i].bbox;
+        b.x =  (b.x - (netw - new_w)/2./netw) / ((float)new_w/netw);
+        b.y =  (b.y - (neth - new_h)/2./neth) / ((float)new_h/neth);
+        b.w *= (float)netw/new_w;
+        b.h *= (float)neth/new_h;
+        if(!relative){
+            b.x *= w;
+            b.w *= w;
+            b.y *= h;
+            b.h *= h;
+        }
+        dets[i].bbox = b;
+    }
+}
+#else
+// darknet源工程默认使用letterbox缩放图片，而darknet-AlexeyAB默认使用resize缩放图片
 void correct_yolo_boxes(detection* dets,int n,int w,int h,int netw,int neth,int relative)
 {
     int i;
@@ -197,6 +244,7 @@ void correct_yolo_boxes(detection* dets,int n,int w,int h,int netw,int neth,int 
         dets[i].bbox = b;
     }
 }
+#endif
 
 
 box get_yolo_box(float* x,float* biases,int n,int index,int i,int j,int lw, int lh,int w, int h,int stride)
@@ -209,6 +257,27 @@ box get_yolo_box(float* x,float* biases,int n,int index,int i,int j,int lw, int 
     return b;
 }
 
+#if SAVE_YOLO_OUTPUT
+#include <sstream>
+#include <fstream>
+using namespace std;
+void save_float_data_file(const string & filename, const float * data, int count)
+{
+	ofstream outfile(filename.c_str());
+	if (!outfile)
+	{
+		LOG(ERROR) << "open file failed, " << filename;
+		return ;
+	}
+	
+	for (int c = 0; c < count; ++c)
+	{
+		outfile << scientific << setprecision(18) << data[c] << "\n";	
+	}
+	outfile.close();
+
+}
+#endif 
 
 int get_yolo_detections(layer l,int w, int h, int netw,int neth,float thresh,int *map,int relative,detection *dets)
 {
@@ -274,6 +343,17 @@ detection* get_detections(vector<Blob<float>*> blobs,int img_w,int img_h,int net
         l_params = make_yolo_layer(blobs[i]->num(),blobs[i]->width(),blobs[i]->height(),net_w,net_h,num_bboxes,blobs.size()*dev_num_anchors,classes);
         layers_params.push_back(l_params);
         forward_yolo_layer_gpu(blobs[i]->gpu_data(),l_params);
+
+#if SAVE_YOLO_OUTPUT
+		layer & l = l_params;
+		stringstream ss;
+		ss << "yolo_output_" << l.c << "_" << l.h << "_" 
+					<< l.w << "_caffe.linear.float";
+
+		string filename = "/home/alex/project/feature_maps_caffe/" + ss.str();
+		LOG(INFO) << "save file " << ss.str();
+		save_float_data_file(filename, l.output, l.outputs);
+#endif
     }
     
     //get network boxes

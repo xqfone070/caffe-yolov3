@@ -11,8 +11,9 @@ set(
 	${CUDA_NVCC_FLAGS}; 
     -O3 
 	-gencode arch=compute_53,code=sm_53  #tegra tx1 
-        -gencode arch=compute_61,code=sm_61  #gtx 1060
-	-gencode arch=compute_62,code=sm_62  #tegra tx2
+	-gencode arch=compute_61,code=sm_61  #gtx 1060
+	-gencode arch=compute_62,code=sm_62  #tegra tx2 
+	-gencode arch=compute_75,code=sm_75  #RTX 2080TI
 )
 
 if(CUDA_VERSION_MAJOR GREATER 9)
@@ -43,8 +44,7 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${PROJECT_OUTPUT_DIR}/lib)
 # build C/C++ interface
 include_directories(${PROJECT_INCLUDE_DIR} ${GIE_PATH}/include)
 include_directories(${PROJECT_INCLUDE_DIR} 
-	/home/ss/caffe/include 
-	/home/ss/caffe/build/include 
+	/home/alex/open_source/caffe/distribute/include 
 )
 
 
@@ -53,11 +53,10 @@ file(GLOB inferenceIncludes *.h )
 
 cuda_add_library(yolov3-plugin SHARED ${inferenceSources})
 target_link_libraries(yolov3-plugin 
-	/home/ss/caffe/build/lib/libcaffe.so  
-	/usr/lib/x86_64-linux-gnu/libglog.so  
-	/usr/lib/x86_64-linux-gnu/libgflags.so.2
-    	/usr/lib/x86_64-linux-gnu/libboost_system.so  
-	/usr/lib/x86_64-linux-gnu/libGLEW.so.1.13  
+	/home/alex/open_source/caffe/distribute/lib/libcaffe.so  
+	/usr/lib/aarch64-linux-gnu/libglog.so
+	/usr/lib/aarch64-linux-gnu/libgflags.so
+	/usr/lib/aarch64-linux-gnu/libboost_system.so
 )
 
 
@@ -69,7 +68,7 @@ endforeach()
 
 
 # create symbolic link for network data
-execute_process( COMMAND "${CMAKE_COMMAND}" "-E" "create_symlink" "${PROJECT_SOURCE_DIR}/data/networks" "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/networks" )
+# execute_process( COMMAND "${CMAKE_COMMAND}" "-E" "create_symlink" "${PROJECT_SOURCE_DIR}/data/networks" "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/networks" )
   
 add_subdirectory(detectnet)
 
