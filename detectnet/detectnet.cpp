@@ -70,7 +70,7 @@ void save_layer_feature_maps(const Net<float> & net)
 		const vector<int>& shapes = b->shape();
 		stringstream ss;
 		//"%s_output%d_%d_%d_%d_caffe.linear.float"%
-		ss << "layer" <<  (i + 1) << "_" << net.layer_names()[i] << "_output0_" << shapes[1] << "_" << shapes[2] << "_" 
+		ss << net.blob_names()[i] << "_output0_" << shapes[1] << "_" << shapes[2] << "_" 
 			<< shapes[3] << "_caffe.linear.float";
 		string filename = "/home/alex/project/feature_maps_caffe/" + ss.str();
 		LOG(INFO) << "save file " << ss.str();
